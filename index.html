@@ -1,0 +1,285 @@
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#063b46">
+<title>Pearl Shop</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:18px;
+ font-family:Tahoma,Arial,sans-serif;
+ background:linear-gradient(160deg,#0b6570,#032630);
+ color:white;min-height:100vh
+}
+header{text-align:center;padding:20px 0}
+header h1{color:#d8fff5;font-size:30px}
+header p{color:#bce8e5}
+h2{font-size:20px}
+#products{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:12px
+}
+.card{
+ background:#f1fff9;color:#06414a;
+ border-radius:18px;padding:14px;
+ display:flex;flex-direction:column;gap:10px
+}
+.card .emoji{font-size:34px}
+.card h3{margin:0;font-size:16px}
+.card p{font-size:13px;line-height:1.8}
+.price{font-weight:bold;color:#08746f}
+button{
+ border:0;border-radius:12px;padding:12px;
+ background:#087b80;color:white;font-size:14px;
+ cursor:pointer;font-family:inherit
+}
+input,textarea,select{
+ display:block;width:100%;padding:12px;margin:7px 0;
+ border:1px solid #9ac9c6;border-radius:9px;
+ font:inherit
+}
+.panel{
+ margin-top:25px;padding:16px;
+ border:1px solid #46c9c0;border-radius:18px;
+ background:#052f3b
+}
+#detail{
+ background:#effff8;color:#063b46;padding:20px;
+ border-radius:18px;margin-bottom:15px
+}
+.hidden{display:none!important}
+.small{font-size:12px;line-height:1.8;color:#c2e3df}
+@media(max-width:380px){
+ #products{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+ <h1>𝓟𝖾𝖺𝗋𝗅 𝖲𝗁𝗈𝗉</h1>
+ <p>فروشگاه خدمات تلگرام 🐚</p>
+ <p>استارز • پریمیوم • بوست • گیفت</p>
+</header>
+
+<section id="detail" class="hidden"></section>
+
+<h2>محصولات فروشگاه</h2>
+<div id="products">در حال بارگذاری...</div>
+
+<section class="panel">
+ <h2>🔐 پنل مدیریت مالک</h2>
+ <p class="small">
+ برای فعال شدن این بخش، Firebase و قوانین امنیتی
+ باید طبق راهنمای زیر تنظیم شوند.
+ </p>
+
+ <div id="login">
+  <input id="email" type="email"
+   placeholder="ایمیل مدیر">
+  <input id="password" type="password"
+   placeholder="رمز عبور مدیر">
+  <button id="loginBtn">ورود به پنل</button>
+ </div>
+
+ <div id="admin" class="hidden">
+  <h3>افزودن محصول</h3>
+  <input id="name" placeholder="نام محصول">
+  <select id="category">
+   <option>پریمیوم</option>
+   <option>استارز</option>
+   <option>بوست</option>
+   <option>گیفت</option>
+   <option>ری‌اکشن</option>
+   <option>اجاره‌ای</option>
+  </select>
+  <input id="price" type="number" min="0"
+   placeholder="قیمت به تومان">
+  <input id="emoji" placeholder="ایموجی محصول" value="✨">
+  <textarea id="description"
+   placeholder="توضیحات محصول"></textarea>
+  <button id="addBtn">ذخیره محصول</button>
+
+  <h3>ویرایش قیمت محصولات</h3>
+  <div id="manage"></div>
+  <button id="logoutBtn">خروج از پنل</button>
+ </div>
+ <p id="message" class="small"></p>
+</section>
+
+<script type="module">
+import {initializeApp}
+ from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+ getFirestore,collection,doc,addDoc,updateDoc,
+ deleteDoc,onSnapshot,serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+ getAuth,signInWithEmailAndPassword,signOut,
+ onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+/* این تنظیمات را از پروژه Firebase خودت بگیر */
+const firebaseConfig = {
+ apiKey:"YOUR_API_KEY",
+ authDomain:"YOUR_PROJECT.firebaseapp.com",
+ projectId:"YOUR_PROJECT_ID",
+ storageBucket:"YOUR_PROJECT.firebasestorage.app",
+ messagingSenderId:"YOUR_SENDER_ID",
+ appId:"YOUR_APP_ID"
+};
+
+const ADMIN="pvkiarash";
+const app=initializeApp(firebaseConfig);
+const db=getFirestore(app);
+const auth=getAuth(app);
+
+let products=[];
+let selected=null;
+let user=null;
+
+const $=id=>document.getElementById(id);
+const money=n=>Number(n)>0
+ ? Number(n).toLocaleString("fa-IR")+" تومان"
+ : "استعلام قیمت";
+
+const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({
+ "&":"&amp;","<":"&lt;",">":"&gt;",
+ '"':"&quot;","'":"&#39;"
+}[c]));
+
+function render(){
+ const detail=$("detail");
+ if(selected){
+  const p=products.find(x=>x.id===selected);
+  if(!p){selected=null;render();return}
+  detail.classList.remove("hidden");
+  detail.innerHTML=`
+   <button id="back">بازگشت</button>
+   <h2>${safe(p.emoji)} ${safe(p.name)}</h2>
+   <p>${safe(p.description)}</p>
+   <h3>${money(p.price)}</h3>
+   <button id="order">ثبت سفارش در تلگرام</button>`;
+  $("back").onclick=()=>{selected=null;render()};
+  $("order").onclick=()=>{
+   const text=`سلام، سفارش ${p.name} را می‌خواهم. قیمت: ${money(p.price)}`;
+   const url=`https://t.me/${ADMIN}?text=${encodeURIComponent(text)}`;
+   if(window.Telegram?.WebApp?.openTelegramLink)
+    window.Telegram.WebApp.openTelegramLink(url);
+   else window.open(url,"_blank");
+  };
+ }else{
+  detail.classList.add("hidden");
+  detail.innerHTML="";
+ }
+
+ $("products").innerHTML=products.length
+ ?products.map(p=>`
+  <article class="card">
+   <div class="emoji">${safe(p.emoji||"✨")}</div>
+   <h3>${safe(p.name)}</h3>
+   <p>${safe(p.description||"")}</p>
+   <div class="price">${money(p.price)}</div>
+   <button data-open="${safe(p.id)}">مشاهده جزئیات</button>
+  </article>`).join("")
+ : "هنوز محصولی اضافه نشده است.";
+
+ document.querySelectorAll("[data-open]").forEach(b=>{
+  b.onclick=()=>{selected=b.dataset.open;render();window.scrollTo(0,0)}
+ });
+
+ if(user)renderAdmin();
+}
+
+function renderAdmin(){
+ $("manage").innerHTML=products.map(p=>`
+  <div style="border-top:1px solid #38717a;padding:12px 0">
+   <b>${safe(p.name)}</b>
+   <input data-price="${safe(p.id)}" type="number"
+    min="0" value="${Number(p.price)||0}">
+   <button data-save="${safe(p.id)}">ذخیره قیمت</button>
+   <button data-del="${safe(p.id)}">حذف محصول</button>
+  </div>`).join("");
+
+ document.querySelectorAll("[data-save]").forEach(b=>{
+  b.onclick=async()=>{
+   const id=b.dataset.save;
+   const input=document.querySelector(`[data-price="${CSS.escape(id)}"]`);
+   try{
+    await updateDoc(doc(db,"products",id),{
+     price:Math.max(0,Number(input.value)||0),
+     updatedAt:serverTimestamp()
+    });
+    $("message").textContent="قیمت ذخیره شد.";
+   }catch(e){$("message").textContent="خطا در ذخیره؛ تنظیمات را بررسی کن."}
+  };
+ });
+
+ document.querySelectorAll("[data-del]").forEach(b=>{
+  b.onclick=async()=>{
+   if(!confirm("محصول حذف شود؟"))return;
+   try{await deleteDoc(doc(db,"products",b.dataset.del))}
+   catch(e){$("message").textContent="حذف انجام نشد."}
+  };
+ });
+}
+
+onSnapshot(collection(db,"products"),snap=>{
+ products=snap.docs.map(d=>({id:d.id,...d.data()}));
+ render();
+},err=>{
+ $("products").textContent="خطا در اتصال به پایگاه داده.";
+});
+
+$("loginBtn").onclick=async()=>{
+ try{
+  await signInWithEmailAndPassword(
+   auth,$("email").value,$("password").value
+  );
+ }catch(e){
+  $("message").textContent="ورود ناموفق؛ ایمیل و رمز را بررسی کن.";
+ }
+};
+
+onAuthStateChanged(auth,u=>{
+ user=u;
+ $("login").classList.toggle("hidden",!!u);
+ $("admin").classList.toggle("hidden",!u);
+ if(u)renderAdmin();
+});
+
+$("logoutBtn").onclick=()=>signOut(auth);
+
+$("addBtn").onclick=async()=>{
+ if(!user)return;
+ const name=$("name").value.trim();
+ if(!name){$("message").textContent="نام محصول را وارد کن.";return}
+ try{
+  await addDoc(collection(db,"products"),{
+   name,
+   category:$("category").value,
+   price:Math.max(0,Number($("price").value)||0),
+   emoji:$("emoji").value.trim()||"✨",
+   description:$("description").value.trim(),
+   createdAt:serverTimestamp()
+  });
+  $("name").value="";
+  $("price").value="";
+  $("description").value="";
+  $("message").textContent="محصول اضافه شد.";
+ }catch(e){
+  $("message").textContent="خطا در افزودن محصول.";
+ }
+};
+
+if(window.Telegram?.WebApp){
+ Telegram.WebApp.ready();
+ Telegram.WebApp.expand();
+}
+</script>
+</body>
+</html>
